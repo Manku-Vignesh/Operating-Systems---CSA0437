@@ -1,1 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Monitoring Dashboard</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+
+        h1, h2 {
+            text-align: center;
+        }
+
+        canvas {
+            width: 300px;
+            height: 150px;
+            margin-top: 20px;
+        }
+
+        .chart-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 50px;
+        }
+
+        /* Styling for the table to display real-time stats */
+        table {
+            margin: 0 auto;
+            border-collapse: collapse;
+            width: 60%;
+            margin-bottom: 50px;  /* Add margin-bottom to create space between table and graphs */
+        }
+
+        table, th, td {
+            border: 1px solid black;
+        }
+
+        th, td {
+            padding: 10px;
+            text-align: center;
+        }
+
+        /* Ensure the charts are displayed below the table */
+        #stats-table {
+            position: relative;  /* Use relative positioning instead of absolute */
+        }
+
+        .charts {
+            display: flex;
+            flex-wrap: wrap; /* Allow charts to wrap and prevent overlapping */
+            justify-content: space-around; /* Space charts evenly */
+        }
+        .modal {
+        display: none;
+        position: fixed;
+        z-index: 1;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.7);
+    }
+
+    .modal-content {
+        position: relative;
+        margin: auto;
+        padding: 20px;
+        width: 80%;
+        max-width: 700px;
+        background-color: white;
+    }
+
+    .close {
+        position: absolute;
+        top: 10px;
+        right: 25px;
+        color: #aaa;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+
+    .close:hover,
+    .close:focus {
+        color: black;
+    }
+
+    </style>
+</head>
+<body>
+
+    <h1>Real-Time System Monitoring Dashboard</h1>
+
+    <!-- Real-Time Stats Table -->
+    <table id="stats-table">
+        <thead>
+            <tr>
+                <th>Resource</th>
+                <th>Usage</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>CPU Usage (%)</td>
+                <td id="cpuUsage">0</td>
+            </tr>
+            <tr>
+                <td>Memory Usage (%)</td>
+                <td id="memoryUsage">0</td>
+            </tr>
+            <tr>
+                <td>Disk Usage (%)</td>
+                <td id="diskUsage">0</td>
+            </tr>
+            <tr>
+                <td>Wi-Fi Download (Bytes/sec)</td>
+                <td id="wifiDownload">0</td>
+            </tr>
+            <tr>
+                <td>Wi-Fi Upload (Bytes/sec)</td>
+                <td id="wifiUpload">0</td>
+            </tr>
+            <tr>
+                <td>Ethernet Download (Bytes/sec)</td>
+                <td id="ethernetDownload">0</td>
+            </tr>
+            <tr>
+                <td>Ethernet Upload (Bytes/sec)</td>
+                <td id="ethernetUpload">0</td>
+            </tr>
+            <tr>
+                <td>GPU Memory Usage (%)</td>
+                <td id="gpuUsage">0</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="charts">
+        <div class="chart-container">
+            <h2>CPU Usage</h2>
+            <canvas id="cpuChart"></canvas>
+        </div>
+
+        <div class="chart-container">
+            <h2>Memory Usage</h2>
+            <canvas id="memoryChart"></canvas>
+        </div>
+
+        <div class="chart-container">
+            <h2>Disk Usage</h2>
+            <canvas id="diskChart"></canvas>
+        </div>
+
+        <div class="chart-container">
+            <h2>Network Usage (Wi-Fi & Ethernet)</h2>
+            <canvas id="networkChart"></canvas>
+        </div>
+
+        <div class="chart-container">
+            <h2>GPU Usage</h2>
+            <canvas id="gpuChart"></canvas>
+        </div>
+    </div>
+    <div id="chartModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="modalTitle"></h2>
+            <canvas id="modalChart"></canvas>
+        </div>
+    </div>
+    <script>
+        const socket = io();
+        const maxDataPoints = 10;
+    
+        // CPU Chart
+        const cpuChartCtx = document.getElementById('cpuChart').getContext('2d');
+        const cpuChart = new Chart(cpuChartCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'CPU Usage (%)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    data: [],
+                    fill: true,
+                    tension: 0.4,
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100
+                    }
+                }
+            }
+        });
+    
+        // Memory Chart
+        const memoryChartCtx = document.getElementById('memoryChart').getContext('2d');
+        const memoryChart = new Chart(memoryChartCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Memory Usage (%)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    data: [],
+                    fill: true,
+                    tension: 0.4,
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100
+                    }
+                }
+            }
+        });
+    
+        // Disk Chart
+        const diskChartCtx = document.getElementById('diskChart').getContext('2d');
+        const diskChart = new Chart(diskChartCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Disk Usage (%)',
+                    borderColor: 'rgba(153, 102, 255, 1)',
+                    backgroundColor: 'rgba(153, 102, 255, 0.2)',
+                    data: [],
+                    fill: true,
+                    tension: 0.4,
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100
+                    }
+                }
+            }
+        });
+    
+        // Network Chart (Wi-Fi & Ethernet Speeds)
+        const networkChartCtx = document.getElementById('networkChart').getContext('2d');
+        const networkChart = new Chart(networkChartCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Wi-Fi Download (Bytes/sec)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                        data: [],
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 2
+                    },
+                    {
+                        label: 'Wi-Fi Upload (Bytes/sec)',
+                        borderColor: 'rgba(255, 206, 86, 1)',
+                        backgroundColor: 'rgba(255, 206, 86, 0.2)',
+                        data: [],
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 2
+                    },
+                    {
+                        label: 'Ethernet Download (Bytes/sec)',
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        data: [],
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 2
+                    },
+                    {
+                        label: 'Ethernet Upload (Bytes/sec)',
+                        borderColor: 'rgba(153, 102, 255, 1)',
+                        backgroundColor: 'rgba(153, 102, 255, 0.2)',
+                        data: [],
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 2
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    
+        // GPU Chart
+        const gpuChartCtx = document.getElementById('gpuChart').getContext('2d');
+        const gpuChart = new Chart(gpuChartCtx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'GPU Memory Usage (%)',
+                    borderColor: 'rgba(255, 159, 64, 1)',
+                    backgroundColor: 'rgba(255, 159, 64, 0.2)',
+                    data: [],
+                    fill: true,
+                    tension: 0.4,
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100
+                    }
+                }
+            }
+        });
+    
+        socket.on('system-stats', (data) => {
+            const currentTime = new Date().toLocaleTimeString();
+    
+            // Update CPU Chart
+            cpuChart.data.labels.push(currentTime);
+            cpuChart.data.datasets[0].data.push(data.cpuUsage);
+            if (cpuChart.data.labels.length > maxDataPoints) {
+                cpuChart.data.labels.shift();
+                cpuChart.data.datasets[0].data.shift();
+            }
+            cpuChart.update();
+    
+            // Update Memory Chart
+            memoryChart.data.labels.push(currentTime);
+            memoryChart.data.datasets[0].data.push(data.memoryUsage);
+            if (memoryChart.data.labels.length > maxDataPoints) {
+                memoryChart.data.labels.shift();
+                memoryChart.data.datasets[0].data.shift();
+            }
+            memoryChart.update();
+    
+            // Update Disk Chart
+            diskChart.data.labels.push(currentTime);
+            diskChart.data.datasets[0].data.push(data.diskUsage);
+            if (diskChart.data.labels.length > maxDataPoints) {
+                diskChart.data.labels.shift();
+                diskChart.data.datasets[0].data.shift();
+            }
+            diskChart.update();
+    
+            // Update Network Chart (Wi-Fi and Ethernet)
+            networkChart.data.labels.push(currentTime);
+            networkChart.data.datasets[0].data.push(data.networkStats.wifi.down);
+            networkChart.data.datasets[1].data.push(data.networkStats.wifi.up);
+            networkChart.data.datasets[2].data.push(data.networkStats.ethernet.down);
+            networkChart.data.datasets[3].data.push(data.networkStats.ethernet.up);
+            if (networkChart.data.labels.length > maxDataPoints) {
+                networkChart.data.labels.shift();
+                networkChart.data.datasets.forEach((dataset) => dataset.data.shift());
+            }
+            networkChart.update();
+    
+            // Update GPU Chart
+            gpuChart.data.labels.push(currentTime);
+            gpuChart.data.datasets[0].data.push(data.gpuUsage);
+            if (gpuChart.data.labels.length > maxDataPoints) {
+                gpuChart.data.labels.shift();
+                gpuChart.data.datasets[0].data.shift();
+            }
+            gpuChart.update();
+    
+            // Update Stats Table
+            document.getElementById('cpuUsage').innerText = data.cpuUsage.toFixed(2);
+            document.getElementById('memoryUsage').innerText = data.memoryUsage.toFixed(2);
+            document.getElementById('diskUsage').innerText = data.diskUsage.toFixed(2);
+            document.getElementById('wifiDownload').innerText = data.networkStats.wifi.down.toFixed(2);
+            document.getElementById('wifiUpload').innerText = data.networkStats.wifi.up.toFixed(2);
+            document.getElementById('ethernetDownload').innerText = data.networkStats.ethernet.down.toFixed(2);
+            document.getElementById('ethernetUpload').innerText = data.networkStats.ethernet.up.toFixed(2);
+            document.getElementById('gpuUsage').innerText = data.gpuUsage.toFixed(2);
+        });
+    
+        // Modal Logic for Chart Expansion
+        document.querySelectorAll('canvas').forEach((canvas) => {
+    canvas.addEventListener('click', function() {
+        const chartId = this.id;
+        const chartTitle = this.previousElementSibling.innerText;  // Get the title of the chart
+
+        // Get chart data from the respective chart instance
+        let clickedChart;
+        if (chartId === 'cpuChart') clickedChart = cpuChart;
+        else if (chartId === 'memoryChart') clickedChart = memoryChart;
+        else if (chartId === 'diskChart') clickedChart = diskChart;
+        else if (chartId === 'networkChart') clickedChart = networkChart;
+        else if (chartId === 'gpuChart') clickedChart = gpuChart;
+
+        // Set modal title and render chart data
+        document.getElementById('modalTitle').innerText = chartTitle;
+        const modalChartCtx = document.getElementById('modalChart').getContext('2d');
+
+        // Destroy the previous chart in the modal if it exists
+        if (window.modalChart && typeof window.modalChart.destroy === 'function') {
+            window.modalChart.destroy();
+        }
+
+        // Clone the data from the clicked chart and display it in the modal
+        window.modalChart = new Chart(modalChartCtx, {
+            type: clickedChart.config.type,
+            data: JSON.parse(JSON.stringify(clickedChart.data)), // Clone chart data
+            options: clickedChart.options // Use the same options
+        });
+
+        // Show the modal
+        document.getElementById('chartModal').style.display = 'block';
+    });
+});
+
+    
+        // Close modal when the 'x' is clicked
+        document.querySelector('.close').addEventListener('click', function() {
+            document.getElementById('chartModal').style.display = 'none';
+        });
+    
+        // Close modal when clicking outside of the modal
+        window.addEventListener('click', function(event) {
+            const modal = document.getElementById('chartModal');
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        });
+    </script>
+    
+</body>
+</html>
 
